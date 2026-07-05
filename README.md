@@ -80,6 +80,53 @@ reading the active power profile. It's not guaranteed to keep working across
 future Plasma releases — if it ever silently stops detecting the profile, the
 manual checkbox still works regardless.
 
+## Login screen and lock screen
+
+The animations can also be used as the SDDM login screen background and the
+lock screen background, though both are separate mechanisms from the desktop
+wallpaper plugin:
+
+- **Lock screen** - kscreenlocker shares the same Wallpaper plugin system as
+  the desktop, so it just needs pointing at this plugin in
+  `~/.config/kscreenlockerrc`:
+  ```ini
+  [Greeter]
+  WallpaperPlugin=com.user.csswallpaper
+
+  [Greeter][Wallpaper][com.user.csswallpaper][General]
+  HtmlFile=thinkpad-ambient.html
+  RenderScale=60
+  FrameRate=30
+  ```
+  Test safely without locking the session: `/usr/lib/kscreenlocker_greet --testing`
+
+- **SDDM** is a separate display manager with its own theme format that
+  doesn't understand Plasma wallpaper plugins at all, so `sddm-theme/` is a
+  full greeter theme (based on Breeze) with a `WebEngineView` embedded in its
+  background component. Install it with:
+  ```bash
+  sudo ./install-sddm-theme.sh      # installs to /usr/share/sddm/themes/css-wallpaper
+                                     # and sets it as the active SDDM theme
+  sudo ./uninstall-sddm-theme.sh    # reverts
+  ```
+  Animation/FPS/render-resolution live in that theme's own `theme.conf`
+  (`webBackground=`, `webFps=`, `webScale=`). Test safely without logging out:
+  `sddm-greeter-qt6 --test-mode --theme /usr/share/sddm/themes/css-wallpaper`
+
+  SDDM's own KCM (System Settings -> Login Screen) can silently write
+  `type=color` into that theme's `theme.conf.user`, which overrides
+  `theme.conf` and replaces the animation with a flat color background. If
+  that happens, re-run the sync script below, which resets it.
+
+Since both of these are configured independently of the desktop wallpaper
+(and of each other), **`./sync-login-wallpaper.sh`** copies whatever
+animation/scale/FPS is currently set on the desktop to both of them in one
+step, rather than editing each by hand:
+```bash
+./sync-login-wallpaper.sh                    # uses the first desktop found
+./sync-login-wallpaper.sh <containment-id>   # or target a specific screen
+```
+
 ## Included examples
 
 | File | Description |

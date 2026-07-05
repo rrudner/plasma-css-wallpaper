@@ -1,0 +1,16 @@
+[SddmGreeterTheme]
+Name=CSS Wallpaper
+Description=HTML/CSS/JS animated background, based on Breeze
+Author=KDE Visual Design Group, modified by rrudner
+Copyright=(c) 2014, David Edmundson
+License=CC-BY-SA
+Type=sddm-theme
+Version=1.0
+Website=https://github.com/rrudner/plasma-css-wallpaper
+Screenshot=preview.png
+MainScript=Main.qml
+ConfigFile=theme.conf
+TranslationsDirectory=translations
+Theme-Id=css-wallpaper
+Theme-API=2.0
+QtVersion=6

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; }
+  html {
+    --grid: 60px; /* overridden from JS once scaleFactor is known */
+  }
+  html, body {
+    width: 100vw; height: 100vh;
+    overflow: hidden;
+    background: #0a0000;
+  }
+
+  .grid, .vignette { position: absolute; inset: 0; }
+
+  /* Grid tile size comes from the --grid custom property, set from JS
+     below. A fixed px value would look right at 100% render resolution
+     but far too sparse once the page is actually rendered at a
+     fraction of the screen's pixels and blown back up by Qt Quick. */
+  .grid {
+    background-image:
+      repeating-linear-gradient(90deg, rgba(150,0,0,0.07) 0 1px, transparent 1px var(--grid)),
+      repeating-linear-gradient(0deg,  rgba(150,0,0,0.07) 0 1px, transparent 1px var(--grid));
+  }
+
+  /* Static vignette: painted once, never touched again. */
+  .vignette {
+    background: radial-gradient(ellipse 85% 85% at 50% 50%, rgba(0,0,0,0) 20%, rgba(0,0,0,0.65) 100%);
+  }
+
+  /* Each ember is sized exactly to its own glow radius, not stretched
+     across the whole screen - keeps the blended (fill-rate) area tiny,
+     unlike a full-viewport gradient layer where the GPU has to blend
+     the entire quad every frame regardless of how much of it is empty. */
+  .ember {
+    position: absolute;
+    border-radius: 50%;
+    will-change: transform;
+  }
+</style>
+</head>
+<body>
+<div class="grid"></div>
+<div id="embers"></div>
+<div class="vignette"></div>
+<script>
+  const params    = new URLSearchParams(location.search);
+  const targetFps = parseInt(params.get('fps'), 10) || 30;
+  const frozen    = params.get('frozen') === '1';
+
+  // This page can be rendered inside a WebEngineView that's itself been
+  // scaled down to a fraction of the screen (the "Render resolution"
+  // wallpaper setting) and then blown back up by Qt Quick to save GPU.
+  // Any size/speed/spacing expressed in fixed CSS pixels would look
+  // right at 100% but be magnified back up at lower render resolutions -
+  // fewer, huge, far-apart embers instead of the intended fine, dense
+  // scattering. scaleFactor compensates so the animation looks the same
+  // regardless of the chosen render resolution.
+  const scaleFactor = (parseInt(params.get('scale'), 10) || 100) / 100;
+
+  document.documentElement.style.setProperty('--grid', (60 * scaleFactor) + 'px');
+
+  // Frozen (manual battery-saver toggle, or the system's power-saver
+  // profile): show just the static grid + vignette "background frame" -
+  // no embers are ever created and no loop is started, so the page is
+  // exactly as cheap as blank.html, instead of the wallpaper abruptly
+  // going flat black.
+  if (!frozen) {
+    const W = window.innerWidth, H = window.innerHeight;
+    const container = document.getElementById('embers');
+    const EMBER_COUNT = 38;
+
+    const embers = Array.from({ length: EMBER_COUNT }, () => {
+      const el     = document.createElement('div');
+      const size   = (10 + Math.random() * Math.random() * 70) * scaleFactor;
+      const alpha  = (0.2 + Math.random() * 0.5).toFixed(2);
+      const rgb    = Math.random() < 0.75 ? '255,25,0' : '255,90,0';
+
+      el.className = 'ember';
+      el.style.width      = size + 'px';
+      el.style.height     = size + 'px';
+      el.style.background = `radial-gradient(circle, rgba(${rgb},${alpha}) 0%, rgba(0,0,0,0) 70%)`;
+      container.appendChild(el);
+
+      return {
+        el,
+        half:  size / 2,
+        x:     Math.random() * W,
+        y:     Math.random() * H,
+        speed: (8 + Math.random() * 20) * scaleFactor,      // px/sec upward
+        drift: (Math.random() - 0.5) * 10 * scaleFactor,    // px/sec sideways
+      };
+    });
+
+    function place(p) {
+      p.el.style.transform = `translate3d(${p.x - p.half}px, ${p.y - p.half}px, 0)`;
+    }
+
+    embers.forEach(place);
+
+    // rAF fires at whatever the display's actual refresh rate is (60Hz,
+    // 144Hz, ...), so throttling can't assume a fixed tick count per
+    // second - it has to be driven by real elapsed time instead. We only
+    // touch styles once at least 1/targetFps seconds have passed; on the
+    // skipped ticks nothing changes, so Chromium has no reason to
+    // recomposite or hand Qt Quick a new frame for them. targetFps comes
+    // from the ?fps= URL parameter set by main.qml (the "Target FPS"
+    // wallpaper setting), typed in by the user rather than a fixed list,
+    // so it works regardless of monitor refresh rate.
+    const frameInterval = 1 / targetFps;
+    let last = performance.now();
+
+    function tick(now) {
+      requestAnimationFrame(tick);
+      const elapsed = (now - last) / 1000;
+      if (elapsed < frameInterval) return;
+
+      const dt = Math.min(elapsed, 0.1);
+      last = now;
+
+      embers.forEach(p => {
+        p.y -= p.speed * dt;
+        p.x += p.drift * dt;
+        if (p.y < -20 * scaleFactor) {
+          p.y = H + 20 * scaleFactor;
+          p.x = Math.random() * W;
+        }
+        place(p);
+      });
+    }
+
+    requestAnimationFrame(tick);
+  }
+</script>
+</body>
+</html>

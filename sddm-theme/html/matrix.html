@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; }
+
+  html { --col: 20px; /* overridden from JS once scaleFactor is known */ }
+
+  html, body {
+    width: 100vw; height: 100vh;
+    overflow: hidden;
+    background: #000;
+  }
+
+  .scanlines, .vignette, canvas { position: absolute; inset: 0; }
+
+  /* Init frame / "eco mode" background: what's shown whether animating
+     or frozen - faint column guides plus a soft vignette. This is the
+     entire wallpaper when frozen, so it needs to look complete on its
+     own rather than leaving a dead black rectangle. Painted once,
+     never touched again, so it costs nothing per frame. */
+  .scanlines {
+    background-image: repeating-linear-gradient(
+      90deg,
+      rgba(0, 255, 90, 0.05) 0,
+      rgba(0, 255, 90, 0.05) 1px,
+      transparent 1px,
+      transparent var(--col)
+    );
+  }
+
+  .vignette {
+    background: radial-gradient(ellipse 95% 95% at 50% 50%, rgba(0,0,0,0) 55%, rgba(0,10,3,0.75) 100%);
+  }
+
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<div class="scanlines"></div>
+<canvas id="c"></canvas>
+<div class="vignette"></div>
+<script>
+  const params    = new URLSearchParams(location.search);
+  const targetFps = parseInt(params.get('fps'), 10) || 20;
+  const frozen    = params.get('frozen') === '1';
+
+  // See template.html: the WebEngineView may be rendered at a fraction
+  // of the screen's real pixel size and scaled back up by Qt Quick, so
+  // every fixed-pixel design constant (cell size, font size) is
+  // multiplied by scaleFactor to keep the apparent on-screen look the
+  // same regardless of the chosen render resolution.
+  const scaleFactor = (parseInt(params.get('scale'), 10) || 100) / 100;
+  const fontSize    = Math.max(6, Math.round(18 * scaleFactor));
+  const cellWidth   = Math.round(fontSize * 0.62);
+
+  document.documentElement.style.setProperty('--col', cellWidth + 'px');
+
+  // Second frame: the falling character grid. Entirely skipped when
+  // frozen - the canvas is never drawn to, so the static scanlines +
+  // vignette above are the whole wallpaper, at the same near-zero GPU
+  // cost as blank.html.
+  if (!frozen) {
+    const canvas = document.getElementById('c');
+    const ctx    = canvas.getContext('2d');
+    const W = canvas.width  = window.innerWidth;
+    const H = canvas.height = window.innerHeight;
+
+    // A real 2D grid, like a terminal buffer: fixed rows/columns of
+    // character cells, not freely-positioned elements. Each column
+    // tracks only the row its falling "head" is currently on.
+    const cols = Math.max(1, Math.floor(W / cellWidth));
+    const rows = Math.max(1, Math.floor(H / fontSize));
+    const CHARS = '0123456789ABCDEF<>{}[]|/\\+=*#%&$';
+
+    function randomChar() {
+      return CHARS[Math.floor(Math.random() * CHARS.length)];
+    }
+
+    // Negative starting rows stagger the initial fill instead of every
+    // column starting at the top in a single dramatic sweep.
+    const drops = Array.from({ length: cols }, () => -Math.floor(Math.random() * rows));
+
+    ctx.font = `bold ${fontSize}px "DejaVu Sans Mono", monospace`;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+
+    // Elapsed-time throttling, not a fixed tick count: rAF fires at
+    // whatever the display's actual refresh rate is (60Hz, 144Hz,
+    // ...), so hitting targetFps has to be driven by real time rather
+    // than by counting ticks.
+    const frameInterval = 1 / targetFps;
+    let last = performance.now();
+
+    function tick(now) {
+      requestAnimationFrame(tick);
+
+      const elapsed = (now - last) / 1000;
+      if (elapsed < frameInterval) return;
+      last = now;
+
+      // Painting a translucent black rectangle over the previous frame
+      // - rather than clearing it - is what turns each newly-drawn
+      // character into a fading trail over the following ticks, the
+      // classic cmatrix technique. Every character is drawn in the
+      // same green; there's no separate "bright head" color.
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.fillStyle = '#15e05f';
+      for (let col = 0; col < cols; col++) {
+        const row = drops[col];
+        if (row >= 0 && row < rows) {
+          ctx.fillText(randomChar(), col * cellWidth, row * fontSize);
+        }
+
+        drops[col]++;
+        if (drops[col] * fontSize > H && Math.random() > 0.975) {
+          drops[col] = -Math.floor(Math.random() * rows * 0.5);
+        }
+      }
+    }
+
+    requestAnimationFrame(tick);
+  }
+</script>
+</body>
+</html>
