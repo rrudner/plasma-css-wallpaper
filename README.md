@@ -2,6 +2,8 @@
 
 A KDE Plasma 6 wallpaper plugin that lets you use any **HTML/CSS/JS** file as your desktop wallpaper.
 
+![thinkpad-ambient animation as the SDDM login screen background](sddm-theme/preview.png)
+
 ## Features
 
 - Full HTML5, CSS3 and JavaScript support (powered by QtWebEngine / Chromium)
