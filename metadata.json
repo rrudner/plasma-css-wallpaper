@@ -1,0 +1,14 @@
+{
+    "KPlugin": {
+        "Authors": [{"Email": "radoslaw@rudner.eu", "Name": "rrudner"}],
+        "Category": "Wallpaper",
+        "Description": "Use any HTML/CSS/JS file as your KDE Plasma wallpaper",
+        "Id": "io.github.rrudner.plasmacsswallpaper",
+        "License": "GPL-2.0-or-later",
+        "Name": "CSS Wallpaper",
+        "Version": "1.0.0",
+        "Website": "https://github.com/rrudner/plasma-css-wallpaper"
+    },
+    "KPackageStructure": "Plasma/Wallpaper",
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+                          http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <entry name="HtmlFile" type="String">
+      <label>Selected HTML file</label>
+      <default>deep-ocean.html</default>
+    </entry>
+    <entry name="RenderScale" type="Int">
+      <label>Render resolution (%)</label>
+      <default>60</default>
+      <min>10</min>
+      <max>100</max>
+    </entry>
+    <entry name="FrameRate" type="Int">
+      <label>Target animation FPS</label>
+      <default>30</default>
+    </entry>
+    <entry name="Freeze" type="Bool">
+      <label>Freeze animation (battery saver)</label>
+      <default>false</default>
+    </entry>
+  </group>
+</kcfg>

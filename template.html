@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<!--
+  Template / reference for authoring CSS Wallpaper animations.
+
+  Copy this file into contents/html/, rename it, and replace the "init
+  frame" and "second frame" sections below with your own visuals. It
+  runs standalone in any browser too - open it directly to preview.
+
+  ─────────────────────────────────────────────────────────────────────
+  BACKGROUND: how this plugin renders your page
+  ─────────────────────────────────────────────────────────────────────
+  Your HTML file is loaded into a QtWebEngine WebEngineView that acts as
+  the desktop wallpaper. Two things about that environment shape how an
+  animation should be written:
+
+  1. Continuous animation is the dominant GPU cost, not visual
+     complexity. Every frame Chromium produces has to be handed off to
+     Qt Quick's compositor. A single element with an "infinite" CSS
+     animation costs roughly as much GPU as fifty of them, because the
+     cost is in producing/handing off a frame at all, 60 times a
+     second, forever - not in what's drawn on it. A page that never
+     changes after its first paint (no rAF, no setInterval, no CSS
+     `animation`/`transition`) costs close to nothing, because the
+     browser simply never has a reason to produce another frame.
+
+  2. The wallpaper settings expose "Render resolution" and "Target FPS"
+     knobs that trade visual fidelity for GPU cost: the WebEngineView
+     can be rendered at a fraction of the screen's actual pixel size
+     and then scaled back up by Qt Quick (a cheap GPU blit vs. Chromium
+     doing full-resolution work every frame). Your page has no way to
+     know it's being scaled - from inside the page, window.innerWidth/
+     innerHeight simply look smaller than the physical screen. Anything
+     you size in fixed CSS pixels (particle size, speed, spacing) will
+     therefore look right at 100% but be magnified back up - and so
+     look far too sparse, huge, or fast - at lower render resolutions,
+     unless you compensate (see "scaleFactor" below).
+
+  Three URL query parameters carry this configuration into your page.
+  All three are optional - reading none of them just means your
+  animation always renders as if fps=30, scale=100, frozen=0. But an
+  animation that ignores them doesn't get any of the benefits: it'll
+  run at whatever rate the browser feels like, look wrong at low render
+  resolutions, and keep burning GPU even when the user has asked the
+  wallpaper to freeze.
+
+    ?fps=<int>      Target frames per second the user asked for
+                     (e.g. 30, or 144 for a high-refresh display).
+    ?scale=<int>    Render resolution as a percent of the screen's
+                     native size (e.g. 60 means the page is being
+                     rendered at 60% size and then scaled 1/0.6 back
+                     up by Qt Quick).
+    ?frozen=1       The wallpaper should be fully static right now
+                     (manual battery-saver toggle, or the system's
+                     power profile is power-saver). See "second frame"
+                     below for what this means for your animation.
+-->
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; }
+
+  html, body {
+    width: 100vw; height: 100vh;
+    overflow: hidden;
+    background: #0a0a14;
+  }
+
+  /* ───────────────────────────────────────────────────────────────
+     INIT FRAME: the static background.
+
+     This is the part of your wallpaper that's ALWAYS shown, whether
+     animating or frozen. It should look complete and good on its own
+     - when frozen, this is the ENTIRE wallpaper, not a placeholder.
+     Build it out of plain CSS gradients/shapes wherever possible: a
+     static background costs nothing per frame regardless of how
+     detailed it is, since it's painted once and never touched again.
+     ─────────────────────────────────────────────────────────────── */
+  .backdrop {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 70% 50% at 30% 70%, rgba(80, 120, 255, 0.10) 0%, transparent 70%),
+      radial-gradient(ellipse 60% 40% at 70% 20%, rgba(255, 90, 160, 0.08) 0%, transparent 70%);
+  }
+
+  .vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse 85% 85% at 50% 50%, rgba(0,0,0,0) 30%, rgba(0,0,0,0.55) 100%);
+  }
+
+  /* ───────────────────────────────────────────────────────────────
+     SECOND FRAME: the animated overlay (e.g. particles).
+
+     Elements here are created and animated by the script below, and
+     ONLY when the page is not frozen. Each one is sized to its own
+     bounding box, not stretched across the whole screen - the GPU
+     has to blend every pixel of a layer each frame, so a few
+     tightly-sized elements are far cheaper than one giant mostly-
+     transparent one, regardless of element count.
+     ─────────────────────────────────────────────────────────────── */
+  .mote {
+    position: absolute;
+    border-radius: 50%;
+    will-change: transform;
+  }
+</style>
+</head>
+<body>
+
+<!-- Init frame: always present. -->
+<div class="backdrop"></div>
+
+<!-- Second frame: populated by JS below, only when not frozen. -->
+<div id="motes"></div>
+
+<div class="vignette"></div>
+
+<script>
+  const params    = new URLSearchParams(location.search);
+  const targetFps = parseInt(params.get('fps'), 10) || 30;
+  const frozen    = params.get('frozen') === '1';
+
+  // scaleFactor compensates for the WebEngineView possibly being
+  // rendered at a fraction of the screen's native size and then scaled
+  // back up (see the file-level comment above). Multiply EVERY design
+  // constant expressed in fixed CSS pixels - size, speed, spacing,
+  // offsets - by this factor before using it, so the animation looks
+  // the same regardless of the "Render resolution" setting. Constants
+  // expressed as viewport percentages (vw/vh/%) never need this: they
+  // already scale with window.innerWidth/innerHeight automatically.
+  const scaleFactor = (parseInt(params.get('scale'), 10) || 100) / 100;
+
+  // ───────────────────────────────────────────────────────────────
+  // Frozen: stop here. No elements are created, no timer or rAF loop
+  // is started, so the page is fully static from this point on - as
+  // cheap on the GPU as a page with no script at all. This is what
+  // makes the init frame above double as a proper "frozen" wallpaper
+  // instead of the whole thing going flat black.
+  // ───────────────────────────────────────────────────────────────
+  if (!frozen) {
+    const W = window.innerWidth, H = window.innerHeight;
+    const container = document.getElementById('motes');
+    const MOTE_COUNT = 24;
+
+    const motes = Array.from({ length: MOTE_COUNT }, () => {
+      const el   = document.createElement('div');
+      const size = (2 + Math.random() * 5) * scaleFactor;  // scaled!
+
+      el.className = 'mote';
+      el.style.width      = size + 'px';
+      el.style.height     = size + 'px';
+      el.style.background = 'radial-gradient(circle, rgba(200,220,255,0.6) 0%, rgba(0,0,0,0) 70%)';
+      container.appendChild(el);
+
+      return {
+        el,
+        half:  size / 2,
+        x:     Math.random() * W,
+        y:     Math.random() * H,
+        speed: (4 + Math.random() * 10) * scaleFactor,       // px/sec, scaled!
+        drift: (Math.random() - 0.5) * 6 * scaleFactor,      // px/sec, scaled!
+      };
+    });
+
+    function place(m) {
+      m.el.style.transform = `translate3d(${m.x - m.half}px, ${m.y - m.half}px, 0)`;
+    }
+    motes.forEach(place);
+
+    // Throttle to targetFps using elapsed real time, not a fixed tick
+    // count - rAF fires at whatever the display's actual refresh rate
+    // is (60Hz, 144Hz, ...), so counting ticks would assume a refresh
+    // rate that isn't necessarily correct. On ticks where less than
+    // 1/targetFps seconds have passed, we return without touching any
+    // style, so Chromium has nothing to recomposite for that tick.
+    const frameInterval = 1 / targetFps;
+    let last = performance.now();
+
+    function tick(now) {
+      requestAnimationFrame(tick);
+
+      const elapsed = (now - last) / 1000;
+      if (elapsed < frameInterval) return;
+
+      const dt = Math.min(elapsed, 0.1);
+      last = now;
+
+      motes.forEach(m => {
+        m.y -= m.speed * dt;
+        m.x += m.drift * dt;
+        if (m.y < -20 * scaleFactor) {
+          m.y = H + 20 * scaleFactor;
+          m.x = Math.random() * W;
+        }
+        place(m);
+      });
+    }
+
+    requestAnimationFrame(tick);
+  }
+
+  // ───────────────────────────────────────────────────────────────
+  // If your animation uses CSS `animation`/`transition` instead of a
+  // JS loop (perfectly fine, and often cheaper - see deep-ocean.html
+  // for an example), the frozen pattern looks like this instead:
+  //
+  //   if (frozen) document.documentElement.classList.add('frozen');
+  //
+  //   /* in <style> */
+  //   html.frozen .my-animated-thing { animation-play-state: paused; }
+  //
+  // That pauses everything in place rather than skipping creation of
+  // elements, which is the simpler option when your "second frame"
+  // content is markup-driven rather than built dynamically in JS.
+  // ───────────────────────────────────────────────────────────────
+</script>
+</body>
+</html>
