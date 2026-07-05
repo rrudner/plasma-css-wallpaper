@@ -13,11 +13,11 @@ ColumnLayout {
     property string cfg_HtmlFile: "deep-ocean.html"
     property string cfg_HtmlFileDefault: "deep-ocean.html"
 
-    property int cfg_RenderScale: 60
-    property int cfg_RenderScaleDefault: 60
+    property int cfg_RenderScale: 100
+    property int cfg_RenderScaleDefault: 100
 
-    property int cfg_FrameRate: 30
-    property int cfg_FrameRateDefault: 30
+    property int cfg_FrameRate: 60
+    property int cfg_FrameRateDefault: 60
 
     property bool cfg_Freeze: false
     property bool cfg_FreezeDefault: false

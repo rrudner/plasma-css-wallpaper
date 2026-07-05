@@ -97,8 +97,8 @@ wallpaper plugin:
 
   [Greeter][Wallpaper][com.user.csswallpaper][General]
   HtmlFile=thinkpad-ambient.html
-  RenderScale=60
-  FrameRate=30
+  RenderScale=100
+  FrameRate=60
   ```
   Test safely without locking the session: `/usr/lib/kscreenlocker_greet --testing`
 
@@ -133,6 +133,7 @@ step, rather than editing each by hand:
 
 | File | Description |
 |---|---|
+| `aquarium.html` | Sunlit tank with swimming fish, plants, rocks and filter bubbles; respects `?fps=`, `?scale=` and `?frozen=` |
 | `deep-ocean.html` | Deep-sea gradient with rising bubbles; respects `?fps=`, `?scale=` and `?frozen=` |
 | `matrix.html` | Classic terminal-style falling code grid; respects `?fps=`, `?scale=` and `?frozen=` |
 | `thinkpad-ambient.html` | Dim red/orange ambient embers with a subtle grid and vignette; respects `?fps=`, `?scale=` and `?frozen=` |

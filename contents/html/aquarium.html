@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; }
+
+  html, body {
+    width: 100vw; height: 100vh;
+    overflow: hidden;
+    background: #04263d;
+  }
+
+  .water, .rays, .sand, .vignette { position: absolute; inset: 0; }
+
+  /* Init frame: a static sunlit-water gradient, darkest at the bottom
+     glass/gravel and lighter toward the surface. Painted once, always
+     shown - this is the entire wallpaper when frozen. */
+  .water {
+    background: linear-gradient(to bottom, #0d4d6e 0%, #073957 30%, #052a41 65%, #031b2c 100%);
+  }
+
+  .rays {
+    background:
+      linear-gradient(115deg, rgba(180, 230, 255, 0.10) 0%, transparent 18%),
+      linear-gradient(105deg, rgba(180, 230, 255, 0.07) 10%, transparent 30%),
+      linear-gradient(125deg, rgba(180, 230, 255, 0.06) 20%, transparent 42%);
+  }
+
+  .sand {
+    background: linear-gradient(to bottom, transparent 85%, rgba(120, 100, 60, 0.35) 100%);
+  }
+
+  .vignette {
+    background: radial-gradient(ellipse 90% 90% at 50% 55%, rgba(0,0,0,0) 40%, rgba(0,0,0,0.55) 100%);
+  }
+
+  /* Static plants/rocks: part of the init frame, painted once with
+     plain CSS shapes so they cost nothing per frame regardless of how
+     many there are. z-index (set inline) keeps the back/front planting
+     rows in the right order regardless of creation order. */
+  .plant {
+    position: absolute;
+    bottom: 0;
+    border-radius: 50% 50% 8% 8% / 60% 60% 8% 8%;
+    transform-origin: bottom center;
+  }
+
+  .rock {
+    position: absolute;
+    bottom: 0;
+    border-radius: 50% 50% 40% 40% / 70% 70% 30% 30%;
+  }
+
+  /* Second frame: fish and filter bubbles, created and animated by the
+     script below, only when not frozen. Each is sized to its own
+     bounding box rather than stretched across the screen, so the
+     blended (fill-rate) area stays tiny regardless of count. */
+  .fish { position: absolute; will-change: transform; }
+  .fish .body { position: absolute; border-radius: 50%; }
+  .fish .tail { position: absolute; transform-origin: 100% 50%; animation: fishWag 0.5s ease-in-out infinite; }
+  .fish .fin  { position: absolute; clip-path: polygon(0% 100%, 50% 0%, 100% 100%); }
+
+  @keyframes fishWag {
+    0%, 100% { transform: rotate(18deg); }
+    50%      { transform: rotate(-18deg); }
+  }
+
+  .bubble {
+    position: absolute;
+    border-radius: 50%;
+    will-change: transform;
+  }
+</style>
+</head>
+<body>
+
+<!-- Init frame: always present, a complete-looking planted tank. -->
+<div class="water"></div>
+<div class="rays"></div>
+<div id="plants"></div>
+<div class="sand"></div>
+
+<!-- Second frame: populated by JS below, only when not frozen. -->
+<div id="fish-layer"></div>
+<div id="bubbles"></div>
+
+<div class="vignette"></div>
+
+<script>
+  const params    = new URLSearchParams(location.search);
+  const targetFps = parseInt(params.get('fps'), 10) || 30;
+  const frozen    = params.get('frozen') === '1';
+  const scaleFactor = (parseInt(params.get('scale'), 10) || 100) / 100;
+
+  // Below ~35% render resolution, a fixed-px design constant multiplied
+  // straight by scaleFactor (see template.html) shrinks into a handful
+  // of real device pixels - Chromium can't resolve fine shapes (stripes,
+  // eyes, fins) at that size, so what Qt Quick blits back up is a soft
+  // blur instead of a recognizable fish. Flooring the *size* scale (but
+  // not speed - see below) trades perfect apparent-size consistency at
+  // extreme low "Render resolution" settings like 10% for shapes that
+  // stay legible once heavily upscaled.
+  const sizeScale = Math.max(scaleFactor, 0.35);
+
+  const W = window.innerWidth, H = window.innerHeight;
+
+  // ─────────────────────────────────────────────────────────────────
+  // Static plants: two rows of wavy "seaweed" blobs (a darker, taller
+  // back row and a brighter, shorter front row) plus scattered rocks
+  // along the bottom - part of the init frame. Built once from plain
+  // CSS shapes/gradients - no animation, so they're free every frame.
+  // ─────────────────────────────────────────────────────────────────
+  (function buildPlants() {
+    const container   = document.getElementById('plants');
+    const backGreens  = ['#123a22', '#164a2b', '#0f2f1c', '#1a4d2e'];
+    const frontGreens = ['#2f9e55', '#3ab868', '#227a45', '#4ecf82', '#1f8f4f'];
+    const PLANT_COUNT = 22;
+
+    for (let i = 0; i < PLANT_COUNT; i++) {
+      const isBack = i % 2 === 0;
+      const el     = document.createElement('div');
+      const w      = (isBack ? 14 + Math.random() * 16 : 20 + Math.random() * 28) * sizeScale;
+      const h      = (isBack ? 70 + Math.random() * 130 : 45 + Math.random() * 95) * sizeScale;
+      const left   = (i / PLANT_COUNT) * 100 + (Math.random() * 6 - 3);
+      const skew   = (Math.random() * 14 - 7).toFixed(1);
+      const palette = isBack ? backGreens : frontGreens;
+      const color  = palette[Math.floor(Math.random() * palette.length)];
+
+      el.className = 'plant';
+      el.style.left       = left + '%';
+      el.style.width      = w + 'px';
+      el.style.height     = h + 'px';
+      el.style.zIndex     = isBack ? 0 : 1;
+      el.style.background = `linear-gradient(to top, ${color} 0%, rgba(0,0,0,0) 100%)`;
+      el.style.opacity    = (isBack ? 0.4 + Math.random() * 0.25 : 0.75 + Math.random() * 0.25).toFixed(2);
+      el.style.transform  = `skewX(${skew}deg)`;
+      container.appendChild(el);
+    }
+
+    const rockColors = ['#3a3630', '#4a453c', '#2e2b26', '#524c41'];
+    const ROCK_COUNT = 10;
+    for (let i = 0; i < ROCK_COUNT; i++) {
+      const el   = document.createElement('div');
+      const w    = (26 + Math.random() * 55) * sizeScale;
+      const h    = w * (0.4 + Math.random() * 0.2);
+      const left = Math.random() * 96;
+
+      el.className = 'rock';
+      el.style.left       = left + '%';
+      el.style.width      = w + 'px';
+      el.style.height     = h + 'px';
+      el.style.zIndex     = 1;
+      el.style.background = rockColors[i % rockColors.length];
+      el.style.opacity    = 0.85;
+      container.appendChild(el);
+    }
+  })();
+
+  // ─────────────────────────────────────────────────────────────────
+  // Frozen: stop here. No fish or bubbles are created, no loop is
+  // started, so from this point on the page is as static as a page
+  // with no script at all - an empty-but-complete planted tank.
+  // ─────────────────────────────────────────────────────────────────
+  if (!frozen) {
+    // Six little "species" instead of a flat color list: each has its
+    // own hard-edge pattern (stripes/spots/dark tail-base) built from
+    // solid color bands rather than soft gradients, so the pattern
+    // still reads as a distinct shape rather than washing out to mush
+    // once heavily downscaled and blown back up (see sizeScale above).
+    const species = [
+      { base: '#ff7a2e', shade: '#c9491a', accent: '#ffffff', fin: '#b23d0f', pattern: 'bands'    }, // clownfish
+      { base: '#ffd23d', shade: '#d69a12', accent: '#fff2b0', fin: '#a9740c', pattern: 'plain'     }, // yellow tang
+      { base: '#2fb8ff', shade: '#136a94', accent: '#eaffff', fin: '#0b2233', pattern: 'darktail'  }, // blue tang
+      { base: '#ff5fa0', shade: '#c23370', accent: '#ffd6e6', fin: '#8a1f4d', pattern: 'plain'     }, // pink betta
+      { base: '#b9c6d6', shade: '#7f8ea3', accent: '#37e6ff', fin: '#4a5768', pattern: 'stripe'    }, // neon tetra
+      { base: '#33d980', shade: '#1c8a52', accent: '#0d3d24', fin: '#125c37', pattern: 'spots'     }, // molly
+    ];
+
+    function patternLayers(sp) {
+      switch (sp.pattern) {
+        case 'bands':
+          // Hard color stops (same color repeated at two %) draw crisp
+          // bands with no blur to begin with, unlike a smooth gradient.
+          return [`linear-gradient(100deg, ${sp.shade} 0% 6%, ${sp.accent} 6% 18%, ${sp.shade} 18% 24%, ` +
+                   `transparent 24% 44%, ${sp.shade} 44% 50%, ${sp.accent} 50% 62%, ${sp.shade} 62% 68%, transparent 68% 100%)`];
+        case 'darktail':
+          return [`linear-gradient(90deg, ${sp.fin} 0% 9%, transparent 9% 100%)`];
+        case 'stripe':
+          return [`linear-gradient(to bottom, transparent 42%, ${sp.accent} 47%, ${sp.accent} 53%, transparent 58%)`];
+        case 'spots':
+          return [
+            `radial-gradient(circle at 30% 68%, ${sp.shade} 0% 7%, transparent 7.5%)`,
+            `radial-gradient(circle at 52% 28%, ${sp.shade} 0% 6%, transparent 6.5%)`,
+            `radial-gradient(circle at 68% 62%, ${sp.shade} 0% 6%, transparent 6.5%)`,
+          ];
+        default:
+          return [];
+      }
+    }
+
+    const fishContainer = document.getElementById('fish-layer');
+    const FISH_COUNT = 14;
+
+    const fish = Array.from({ length: FISH_COUNT }, () => {
+      const bodyH  = (15 + Math.random() * 27) * sizeScale;
+      const bodyW  = bodyH * (1.1 + Math.random() * 0.9); // round -> elongated
+      const tailW  = bodyH * 0.9;
+      const tailH  = bodyH * 0.85;
+      const sp     = species[Math.floor(Math.random() * species.length)];
+      const dir    = Math.random() < 0.5 ? 1 : -1; // 1 = swims right, -1 = swims left
+
+      const el = document.createElement('div');
+      el.className = 'fish';
+      el.style.width  = (bodyW + tailW) + 'px';
+      el.style.height = bodyH + 'px';
+
+      // Built facing right by default (head on the right, tail fin on
+      // the left); direction is applied purely via transform so the
+      // shape only needs to be authored once.
+      const body = document.createElement('div');
+      body.className = 'body';
+      body.style.left   = tailW + 'px';
+      body.style.width  = bodyW + 'px';
+      body.style.height = bodyH + 'px';
+      // Bold cartoon eye (black pupil + white iris ring, both hard-edge)
+      // reads clearly even heavily blurred, unlike the earlier single
+      // tiny dark dot. Layer order: eye on top, species pattern next,
+      // plain body shading gradient at the bottom.
+      const eyeLayer = `radial-gradient(circle at 78% 33%, #10141a 0% 4%, #ffffff 4% 9%, transparent 9.5%)`;
+      const baseLayer = `linear-gradient(155deg, ${sp.base} 0%, ${sp.shade} 100%)`;
+      body.style.background = [eyeLayer, ...patternLayers(sp), baseLayer].join(', ');
+      // Inset shadow ring = a bold cel-shaded outline that stays inside
+      // the ellipse's own border-radius clip, cheap (not per-frame) and
+      // legible even at the 10% render-resolution floor above.
+      body.style.boxShadow = `inset 0 0 0 ${Math.max(1.5, bodyH * 0.1)}px rgba(10,14,20,0.5)`;
+
+      const tail = document.createElement('div');
+      tail.className = 'tail';
+      tail.style.left   = '0px';
+      tail.style.top    = ((bodyH - tailH) / 2) + 'px';
+      tail.style.width  = tailW + 'px';
+      tail.style.height = tailH + 'px';
+      tail.style.background = sp.fin;
+      tail.style.clipPath = 'polygon(100% 0%, 0% 50%, 100% 100%)';
+      const wagDur = (0.35 + Math.random() * 0.35);
+      tail.style.animationDuration = wagDur + 's';
+      tail.style.animationDelay = (-Math.random() * wagDur) + 's';
+
+      // Small dorsal fin straddling the top of the body - a splash of
+      // the accent fin color rather than another shade of the body, so
+      // each fish reads as more than a plain colored blob.
+      const fin = document.createElement('div');
+      fin.className = 'fin';
+      const finW = bodyW * 0.34;
+      const finH = bodyH * 0.6;
+      fin.style.left   = (tailW + bodyW * 0.28) + 'px';
+      fin.style.top    = (-finH * 0.5) + 'px';
+      fin.style.width  = finW + 'px';
+      fin.style.height = finH + 'px';
+      fin.style.background = sp.fin;
+      fin.style.opacity = '0.92';
+
+      el.appendChild(tail);
+      el.appendChild(body);
+      el.appendChild(fin);
+      fishContainer.appendChild(el);
+
+      return {
+        el,
+        w:      bodyW + tailW,
+        h:      bodyH,
+        x:      Math.random() * W,
+        y:      H * 0.15 + Math.random() * H * 0.65,
+        baseY:  0,
+        speed:  (14 + Math.random() * 22) * sizeScale, // px/sec horizontal
+        dir,
+        bobAmp:   (4 + Math.random() * 6) * sizeScale,
+        bobSpeed: 0.8 + Math.random() * 1.2,
+        bobPhase: Math.random() * Math.PI * 2,
+      };
+    });
+    fish.forEach(f => { f.baseY = f.y; });
+
+    function placeFish(f) {
+      const flip = f.dir === -1 ? -1 : 1;
+      f.el.style.transform =
+        `translate3d(${f.x - f.w / 2}px, ${f.y - f.h / 2}px, 0) scaleX(${flip})`;
+    }
+    fish.forEach(placeFish);
+
+    // Filter-style bubble streams: several fixed emitter points near
+    // the bottom, same "rising particle" pattern as deep-ocean.html.
+    const bubbleContainer = document.getElementById('bubbles');
+    const BUBBLE_COUNT = 26;
+    const emitters = [W * 0.12, W * 0.38, W * 0.62, W * 0.88];
+
+    const bubbles = Array.from({ length: BUBBLE_COUNT }, () => {
+      const el   = document.createElement('div');
+      const size = (2 + Math.random() * 7) * sizeScale;
+
+      el.className = 'bubble';
+      el.style.width      = size + 'px';
+      el.style.height     = size + 'px';
+      el.style.background =
+        'radial-gradient(circle at 35% 30%, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.05) 12%, ' +
+        'rgba(180,230,255,0.05) 55%, rgba(180,230,255,0.3) 90%, rgba(180,230,255,0) 100%)';
+      bubbleContainer.appendChild(el);
+
+      const originX = emitters[Math.floor(Math.random() * emitters.length)];
+      return {
+        el,
+        half:   size / 2,
+        originX,
+        x:      originX,
+        y:      H + Math.random() * H * 0.5,
+        speed:  (18 + Math.random() * 22) * sizeScale,
+        wobble: Math.random() * Math.PI * 2,
+      };
+    });
+
+    function placeBubble(b) {
+      b.el.style.transform = `translate3d(${b.x - b.half}px, ${b.y - b.half}px, 0)`;
+    }
+    bubbles.forEach(placeBubble);
+
+    // Elapsed-time throttling, not a fixed tick count: rAF fires at
+    // whatever the display's actual refresh rate is, so hitting
+    // targetFps has to be driven by real time rather than by counting
+    // ticks.
+    const frameInterval = 1 / targetFps;
+    let last = performance.now();
+    let t = 0;
+
+    function tick(now) {
+      requestAnimationFrame(tick);
+
+      const elapsed = (now - last) / 1000;
+      if (elapsed < frameInterval) return;
+
+      const dt = Math.min(elapsed, 0.1);
+      last = now;
+      t += dt;
+
+      fish.forEach(f => {
+        f.x += f.speed * f.dir * dt;
+        f.y = f.baseY + Math.sin(t * f.bobSpeed + f.bobPhase) * f.bobAmp;
+
+        const margin = f.w / 2 + 20 * sizeScale;
+        if (f.dir === 1 && f.x - margin > W) {
+          f.x = -margin;
+          f.baseY = H * 0.15 + Math.random() * H * 0.65;
+        } else if (f.dir === -1 && f.x + margin < 0) {
+          f.x = W + margin;
+          f.baseY = H * 0.15 + Math.random() * H * 0.65;
+        }
+        placeFish(f);
+      });
+
+      bubbles.forEach(b => {
+        b.y -= b.speed * dt;
+        b.x = b.originX + Math.sin(t * 1.5 + b.wobble) * 6 * sizeScale;
+        if (b.y < -20 * sizeScale) {
+          b.y = H + 20 * sizeScale;
+        }
+        placeBubble(b);
+      });
+    }
+
+    requestAnimationFrame(tick);
+  }
+</script>
+</body>
+</html>
