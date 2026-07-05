@@ -18,6 +18,13 @@ echo "Installing SDDM theme '$THEME_NAME' to $THEME_DIR ..."
 mkdir -p "$THEME_DIR"
 cp -r "$SCRIPT_DIR/sddm-theme/." "$THEME_DIR/"
 
+# contents/html/ is the only copy of the animations kept in the repo -
+# theme.conf's webBackground= points at html/<file> relative to the theme
+# dir, so they're copied in here rather than duplicated in sddm-theme/.
+# Re-run this script after adding a new .html file to pick it up here too.
+mkdir -p "$THEME_DIR/html"
+cp "$SCRIPT_DIR"/contents/html/*.html "$THEME_DIR/html/"
+
 echo "Setting it as the active theme via $CONF_FILE ..."
 echo "(named to sort after kde_settings.conf, so it wins the Current= key)"
 cat > "$CONF_FILE" <<EOF

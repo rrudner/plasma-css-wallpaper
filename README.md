@@ -105,12 +105,18 @@ wallpaper plugin:
 - **SDDM** is a separate display manager with its own theme format that
   doesn't understand Plasma wallpaper plugins at all, so `sddm-theme/` is a
   full greeter theme (based on Breeze) with a `WebEngineView` embedded in its
-  background component. Install it with:
+  background component. It has no copy of the animations of its own -
+  `install-sddm-theme.sh` copies `contents/html/` into the installed theme's
+  `html/` folder, so `contents/html/` stays the only copy in the repo. Install
+  with:
   ```bash
   sudo ./install-sddm-theme.sh      # installs to /usr/share/sddm/themes/css-wallpaper
                                      # and sets it as the active SDDM theme
   sudo ./uninstall-sddm-theme.sh    # reverts
   ```
+  Re-run `install-sddm-theme.sh` after adding a new `.html` file so it gets
+  copied into the installed theme too.
+
   Animation/FPS/render-resolution live in that theme's own `theme.conf`
   (`webBackground=`, `webFps=`, `webScale=`). Test safely without logging out:
   `sddm-greeter-qt6 --test-mode --theme /usr/share/sddm/themes/css-wallpaper`
