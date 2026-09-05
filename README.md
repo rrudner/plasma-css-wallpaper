@@ -17,6 +17,7 @@ A KDE Plasma 6 wallpaper plugin that lets you use any **HTML/CSS/JS** file as yo
 
 - KDE Plasma 6.0+
 - `qt6-webengine`
+- Python 3 and Bash for the installation and synchronization scripts
 
 ## Installation
 
@@ -29,7 +30,27 @@ chmod +x install.sh
 ./install.sh
 ```
 
-Then right-click your desktop → **Configure Desktop and Wallpaper** → select **CSS Wallpaper**.
+Installation also enables CSS Wallpaper on the lock screen. Run `install.sh`,
+`sync-login-wallpaper.sh` and `uninstall.sh` as your desktop user, without `sudo`.
+They respect `XDG_CONFIG_HOME` and `XDG_DATA_HOME`, falling back to `~/.config`
+and `~/.local/share`. All scripts work from any directory; `package.sh` writes
+its `.plasmoid` archive into the repository directory.
+
+On installation, each lock-screen setting (`HtmlFile`, `RenderScale`, `FrameRate`,
+`Freeze`) comes from the current plugin ID first, then the old
+`com.user.csswallpaper` ID, then `contents/config/main.xml`. The old lock-screen
+group is removed only after the new settings are saved. Existing animations,
+including edits to bundled files, are retained; animations from the old installed
+plugin are copied if absent from the new one. The old installation is retained
+until uninstall so existing desktop selections keep working.
+
+Before the first lock-screen change, the scripts save
+`$XDG_CONFIG_HOME/kscreenlockerrc.css-wallpaper.bak` (normally under `~/.config`).
+Later runs never replace this backup; it is empty if no configuration existed.
+To restore it, copy it over `kscreenlockerrc` while the screen is unlocked.
+
+For the desktop, right-click → **Configure Desktop and Wallpaper** → select
+**CSS Wallpaper**. SDDM installation remains a separate operation.
 
 ## Adding your own animations
 
@@ -39,7 +60,8 @@ Drop any `.html` file into:
 ~/.local/share/plasma/wallpapers/io.github.rrudner.plasmacsswallpaper/contents/html/
 ```
 
-It will appear automatically in the settings dropdown — no restart required.
+Use `$XDG_DATA_HOME/plasma/wallpapers/io.github.rrudner.plasmacsswallpaper/contents/html/`
+when `XDG_DATA_HOME` is set. New files appear in the settings dropdown without a restart.
 
 If your animation reads `window.innerWidth`/`innerHeight` or otherwise depends on
 viewport size, note that the page is reloaded whenever render resolution changes
@@ -88,19 +110,10 @@ The animations can also be used as the SDDM login screen background and the
 lock screen background, though both are separate mechanisms from the desktop
 wallpaper plugin:
 
-- **Lock screen** - kscreenlocker shares the same Wallpaper plugin system as
-  the desktop, so it just needs pointing at this plugin in
-  `~/.config/kscreenlockerrc`:
-  ```ini
-  [Greeter]
-  WallpaperPlugin=com.user.csswallpaper
-
-  [Greeter][Wallpaper][com.user.csswallpaper][General]
-  HtmlFile=thinkpad-ambient.html
-  RenderScale=100
-  FrameRate=60
-  ```
-  Test safely without locking the session: `/usr/lib/kscreenlocker_greet --testing`
+- **Lock screen** uses the same plugin as the desktop. `install.sh` configures
+  it automatically, including `Freeze`; desktop settings are copied later with
+  the sync script below. Preview safely without locking the session:
+  `/usr/lib/kscreenlocker_greet --testing`. Confirm actual locking separately.
 
 - **SDDM** is a separate display manager with its own theme format that
   doesn't understand Plasma wallpaper plugins at all, so `sddm-theme/` is a
@@ -112,10 +125,11 @@ wallpaper plugin:
   ```bash
   sudo ./install-sddm-theme.sh      # installs to /usr/share/sddm/themes/css-wallpaper
                                      # and sets it as the active SDDM theme
-  sudo ./uninstall-sddm-theme.sh    # reverts
+  sudo ./uninstall-sddm-theme.sh    # removes the theme when no other config selects it
   ```
-  Re-run `install-sddm-theme.sh` after adding a new `.html` file so it gets
-  copied into the installed theme too.
+  Re-run `install-sddm-theme.sh` after adding a bundled `.html` file. Updates
+  preserve the installed `theme.conf` and `theme.conf.user`; the installer
+  creates `/etc/sddm.conf.d` if needed.
 
   Animation/FPS/render-resolution live in that theme's own `theme.conf`
   (`webBackground=`, `webFps=`, `webScale=`). Test safely without logging out:
@@ -124,16 +138,29 @@ wallpaper plugin:
   SDDM's own KCM (System Settings -> Login Screen) can silently write
   `type=color` into that theme's `theme.conf.user`, which overrides
   `theme.conf` and replaces the animation with a flat color background. If
-  that happens, re-run the sync script below, which resets it.
+  that happens, re-run the sync script below. It updates only `type`,
+  `webBackground`, `webFps` and `webScale` in `theme.conf.user`, preserving
+  other settings and comments. SDDM synchronization requests elevation once
+  with `pkexec`; it does not propagate the lock screen's `Freeze` setting.
 
-Since both of these are configured independently of the desktop wallpaper
-(and of each other), **`./sync-login-wallpaper.sh`** copies whatever
-animation/scale/FPS is currently set on the desktop to both of them in one
-step, rather than editing each by hand:
+`sync-login-wallpaper.sh` copies the selected desktop's animation, scale, FPS
+and Freeze to the lock screen, and animation, scale and FPS to an installed
+SDDM theme. It selects the lowest numeric containment ID whose
+`wallpaperplugin` is this plugin's current or old ID; stale settings for a
+previous wallpaper do not qualify. An explicit ID must exist and select this
+plugin. Missing keys use `contents/config/main.xml` defaults; invalid values
+or a missing installed animation stop the operation before configuration writes.
+Install the current plugin before syncing.
+
 ```bash
-./sync-login-wallpaper.sh                    # uses the first desktop found
-./sync-login-wallpaper.sh <containment-id>   # or target a specific screen
+./sync-login-wallpaper.sh                    # first desktop using this plugin
+./sync-login-wallpaper.sh <containment-id>   # a specific desktop
+./sync-login-wallpaper.sh --lock-only        # no SDDM changes or elevation
+./sync-login-wallpaper.sh --lock-only 2      # options can be combined
 ```
+
+The lock-screen change completes before SDDM elevation. If SDDM updating fails,
+the lock-screen settings remain applied; rerun synchronization to retry SDDM.
 
 ## Included examples
 
@@ -149,6 +176,21 @@ step, rather than editing each by hand:
 ```bash
 ./uninstall.sh
 ```
+
+If the lock screen still selects either plugin ID, uninstall switches it to
+`org.kde.image`. A different selected plugin and its settings are preserved;
+only this plugin's lock-screen groups are removed. Before deleting either
+installed wallpaper directory, uninstall copies both into a timestamped directory
+under `$XDG_DATA_HOME/plasma/css-wallpaper-backups` (normally
+`~/.local/share/plasma/css-wallpaper-backups`). Recover custom animations there.
+Desktop configuration is unchanged: select another wallpaper if CSS Wallpaper
+is still active.
+
+SDDM removal is separate: `sudo ./uninstall-sddm-theme.sh`. It removes
+`zz-css-wallpaper.conf` only if that file still selects `css-wallpaper`.
+If another SDDM configuration still selects the theme, removal stops and lists
+the files to change first. Otherwise the theme directory is deleted and the
+remaining SDDM configuration determines the login theme.
 
 ## License
 

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Builds a .plasmoid file for manual installation or distribution
-set -e
+set -euo pipefail
+
+# shellcheck source=scripts/common.sh
+source "$(dirname -- "${BASH_SOURCE[0]}")/scripts/common.sh"
+cd -- "$SCRIPT_ROOT"
 
 VERSION=$(python3 -c "import json; print(json.load(open('metadata.json'))['KPlugin']['Version'])")
 OUTPUT="plasma-css-wallpaper-$VERSION.plasmoid"

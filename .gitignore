@@ -1,2 +1,17 @@
 *.plasmoid
 *.tar.gz
+
+# AI coding-agent configs and instruction files
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.codex/
+.claude/
+.cursor/
+.cursorrules
+.github/copilot-instructions.md
+.windsurf/
+.windsurfrules
+.aider/
+.aider.conf.yml
+.continue/

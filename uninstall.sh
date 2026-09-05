@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-set -e
-
-PLUGIN_ID="io.github.rrudner.plasmacsswallpaper"
-INSTALL_DIR="$HOME/.local/share/plasma/wallpapers/$PLUGIN_ID"
-
-echo "Removing CSS Wallpaper..."
-rm -rf "$INSTALL_DIR"
-echo "Done."
+set -euo pipefail
+# shellcheck source=scripts/common.sh
+source "$(dirname -- "${BASH_SOURCE[0]}")/scripts/common.sh"
+wallpaper_command uninstall "$@"
